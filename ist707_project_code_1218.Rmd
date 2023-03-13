@@ -1,0 +1,746 @@
+---
+title: "IST707 Team Project: HR attrition prediction"
+author: "Bomin Powers, Karen Kim"
+date: "12/18/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+# Load the libraries
+library(psych)
+library(Hmisc)
+library(lubridate)
+library(factoextra)
+library(e1071)
+library(rpart)
+library(maptree)
+library(rattle)
+library(car)
+library(caret)
+library(arules)
+library(arulesViz)
+library(ggplot2)
+```
+
+
+# import the data
+```{r}
+hrdata<- read.csv("D:/Documents/school/IST707/project/HRdata.csv")
+summary(hrdata)
+```
+
+# data cleansing
+```{r}
+# remove unnecessary columns
+hrdata<- subset(hrdata, select = -c(X,Date_of_termination))
+```
+
+# convert character data type to nominal types to conduct correlation analysis
+
+```{r}
+# convert age column(int) to nominal type
+
+# check how age's data distributed
+hist(hrdata$Age, breaks = 15, main = paste("Histogram of Age"))
+# split age variable into somewhat equal-sized groups
+hrdata$ageG <- as.factor(cut2(hrdata$Age, g=6))
+# check how each group range look like
+summary(hrdata$ageG)
+## group1 = 18:28, group2 = 29:32, group3 = 33:36, group4 = 37:40, group5 = 41:46, group6 = 47:60
+# now, convert age column(int) to nominal type
+hrdata$ageG <- as.numeric(cut2(hrdata$Age, g=6))
+hrdata<- subset(hrdata, select = -c(Age))
+```
+
+```{r}
+# convert Attrition column(cha) to nominal type
+# convert Yes to 1 and No to 0
+hrdata$Attrition <- ifelse(hrdata$Attrition=="Yes",1,0)
+```
+
+
+```{r}
+# convert BusinessTravel column(cha) to nominal type
+hrdata$BusinessTravel = as.numeric(as.factor(hrdata$BusinessTravel))
+# Non-Travel == 1, Travel_Frequently == 2,Travel_Rarely ==3
+
+# convert Department column(cha) to nominal type
+hrdata$Department = as.numeric(as.factor(hrdata$Department))
+# Human Resources == 1, Sales == 3,Research & Development ==2
+
+# convert JobRole column(cha) to nominal type
+hrdata$JobRole = as.numeric(as.factor(hrdata$JobRole))
+# Healthcare Representative == 1, Human Resources == 2, Laboratory Technician ==3, 
+# Manager=4, Manufacturing Director==5, Research Director ==6,
+# Research Scientist ==7, Sales Executive==8, Sales Representative==9
+
+# convert MaritalStatus column(cha) to nominal type
+hrdata$MaritalStatus = as.numeric(as.factor(hrdata$MaritalStatus))
+# Divorced == 1, Married == 2,Single == 3
+
+# convert Higher_Education column(cha) to nominal type
+hrdata$Higher_Education = as.numeric(as.factor(hrdata$Higher_Education))
+# 12th == 1, Graduation == 2,PHD == 3, Post-Graduation == 4
+
+# convert Status_of_leaving column(cha) to nominal type
+hrdata$Status_of_leaving = as.numeric(as.factor(hrdata$Status_of_leaving))
+# Better Opportunity == 1,
+
+# convert Source_of_Hire column(cha) to nominal type
+hrdata$Source_of_Hire = as.numeric(as.factor(hrdata$Source_of_Hire))
+# Job Event == 1, Portal == 2,Recruiter == 3, Walk-in == 4
+
+# convert Job_mode column(cha) to nominal type
+hrdata$Job_mode = as.numeric(as.factor(hrdata$Job_mode))
+# Contract == 1, FullTime == 2, Part Time == 3
+```
+
+
+```{r}
+# convert DistanceFromHome column(int) to nominal type
+
+# check how DistanceFromHome's data distributed
+hist(hrdata$DistanceFromHome, breaks = 15, main = paste("Histogram of DistanceFromHome"))
+# split DistanceFromHome variable into somewhat equal-sized groups
+hrdata$DistanceFromHomeG <- as.factor(cut2(hrdata$DistanceFromHome, g=8))
+# check how each group range look like
+summary(hrdata$DistanceFromHomeG)
+# group1 = 1, group2 = 2, group3 =3:4, group4 = 5:7, group5 = 8:9, group6 = 10:14, group7 = 15:22, group8=23:29
+# now, convert DistanceFromHome column(int) to nominal type
+hrdata$DistanceFromHomeG <- as.numeric(cut2(hrdata$DistanceFromHome, g=8))
+hrdata<- subset(hrdata, select = -c(DistanceFromHome))
+```
+
+```{r}
+# convert Gender column(cha) to binary type
+
+# convert Male to 1 and Female to 0
+hrdata$Gender <- ifelse(hrdata$Gender =="Male",1,0)
+```
+
+
+```{r}
+# convert MonthlyIncome column(int) to nominal type
+
+# check how MonthlyIncome's data distributed
+hist(hrdata$MonthlyIncome, breaks = 15, main = paste("Histogram of MonthlyIncome"))
+# split MonthlyIncome variable into somewhat equal-sized groups
+hrdata$MonthlyIncomeG <- as.factor(cut2(hrdata$MonthlyIncome, g=6))
+# check how each group range look like
+summary(hrdata$MonthlyIncomeG)
+# group1 = 1009:2560, group2 = 2561:3632, group3 =3633:4929, group4 = 4930:6537, group5 = 6538:10551, group6 = 10552:19999
+# now, convert age column(int) to nominal type
+hrdata$MonthlyIncomeG <- as.numeric(cut2(hrdata$MonthlyIncome, g=6))
+hrdata<- subset(hrdata, select = -c(MonthlyIncome))
+```
+
+```{r}
+# check how NumCompaniesWorked's data distributed
+hist(hrdata$NumCompaniesWorked, breaks = 15, main = paste("Histogram of NumCompaniesWorked"))
+## this could be a problem since the values are clustered between 0 to 2 years but, for now keep this way.
+summary(as.factor(hrdata$NumCompaniesWorked))
+```
+
+```{r}
+# convert OverTime column(cha) to binary type
+
+# convert Yes to 1 and No to 0
+hrdata$OverTime <- ifelse(hrdata$OverTime =="Yes",1,0)
+```
+
+```{r}
+# convert PercentSalaryHike column(int) to nominal type
+
+# check how PercentSalaryHike's data distributed
+hist(hrdata$PercentSalaryHike, breaks = 15, main = paste("Histogram of PercentSalaryHike"))
+# split PercentSalaryHike variable into somewhat equal-sized groups
+hrdata$PercentSalaryHikeG <- as.factor(cut2(hrdata$PercentSalaryHike, g=9))
+# check how each group range look like
+summary(hrdata$PercentSalaryHikeG)
+# group1 = 11, group2 = 12, group3 =13, group4 = 14, group5 = 15:16, group6 = 17:18, group7 = 19:21, group8=22:25
+# now, convert PercentSalaryHike column(int) to nominal type
+hrdata$PercentSalaryHikeG <- as.numeric(cut2(hrdata$PercentSalaryHike, g=9))
+hrdata<- subset(hrdata, select = -c(PercentSalaryHike))
+```
+
+```{r}
+# convert TotalWorkingYears column(int) to nominal type
+
+# check how TotalWorkingYears's data distributed
+hist(hrdata$TotalWorkingYears, breaks = 15, main = paste("Histogram of TotalWorkingYears"))
+# split TotalWorkingYears variable into somewhat equal-sized groups
+hrdata$TotalWorkingYearsG <- as.factor(cut2(hrdata$TotalWorkingYears, g=5))
+# check how each group range look like
+summary(hrdata$TotalWorkingYearsG)
+# group1 = 0:5, group2 = 6:8, group3 =9:10, group4 = 11:17, group5 = 18:40
+# now, convert TotalWorkingYears column(int) to nominal type
+hrdata$TotalWorkingYearsG <- as.numeric(cut2(hrdata$TotalWorkingYears, g=5))
+hrdata<- subset(hrdata, select = -c(TotalWorkingYears))
+```
+
+```{r}
+# check how TrainingTimesLastYear's data distributed
+## this could be a problem since the values are clustered between 2 to 3 but, for now keep this way.
+summary(as.factor(hrdata$TrainingTimesLastYear))
+```
+
+```{r}
+# convert YearsAtCompany column(int) to nominal type
+
+# check how YearsAtCompany's data distributed
+hist(hrdata$YearsAtCompany, breaks = 15, main = paste("Histogram of YearsAtCompany"))
+# split YearsAtCompany variable into somewhat equal-sized groups
+hrdata$YearsAtCompanyG <- as.factor(cut2(hrdata$YearsAtCompany, g=4))
+# check how each group range look like
+summary(hrdata$YearsAtCompanyG)
+# group1 = 0:3, group2 = 4:5, group3 =6:9, group4 = 10:40
+# now, convert YearsAtCompany column(int) to nominal type
+hrdata$YearsAtCompanyG <- as.numeric(cut2(hrdata$YearsAtCompany, g=4))
+hrdata<- subset(hrdata, select = -c(YearsAtCompany))
+```
+
+```{r}
+# convert YearsSinceLastPromotion column(int) to nominal type
+
+# check how YearsSinceLastPromotion's data distributed
+hist(hrdata$YearsSinceLastPromotion, breaks = 15, main = paste("Histogram of YearsSinceLastPromotion"))
+# split YearsSinceLastPromotion variable into somewhat equal-sized groups
+hrdata$YearsSinceLastPromotionG <- as.factor(cut2(hrdata$YearsSinceLastPromotion, g=4))
+# check how each group range look like
+summary(hrdata$YearsSinceLastPromotionG)
+# group1 = 0, group2 = 1, group3 =2:3, group4 = 4:15,
+# now, convert YearsSinceLastPromotion column(int) to nominal type
+hrdata$YearsSinceLastPromotionG <- as.numeric(cut2(hrdata$YearsSinceLastPromotion, g=4))
+hrdata<- subset(hrdata, select = -c(YearsSinceLastPromotion))
+```
+
+
+```{r}
+# convert YearsWithCurrManager column(int) to nominal type
+
+# check how YearsWithCurrManager's data distributed
+hist(hrdata$YearsWithCurrManager, breaks = 15, main = paste("Histogram of YearsWithCurrManager"))
+# split YearsWithCurrManager variable into somewhat equal-sized groups
+hrdata$YearsWithCurrManagerG <- as.factor(cut2(hrdata$YearsWithCurrManager, g=5))
+# check how each group range look like
+summary(hrdata$YearsWithCurrManagerG)
+# group1 = 0:1, group2 = 2, group3 =3:4, group4 = 5:7, group5 = 8:17
+# now, convert YearsWithCurrManager column(int) to nominal type
+hrdata$YearsWithCurrManagerG <- as.numeric(cut2(hrdata$YearsWithCurrManager, g=5))
+hrdata<- subset(hrdata, select = -c(YearsWithCurrManager))
+```
+
+
+```{r}
+# convert Date_of_Hire column(int) to nominal type
+
+# extract year and month from Date_of_Hire data
+hrdata$Date_of_Hire <- strptime(hrdata$Date_of_Hire, "%d-%m-%Y")
+hrdata$Year_of_Hire <- year(as.POSIXlt(hrdata$Date_of_Hire, format="%d/%m/%Y"))
+hrdata$Month_of_Hire <- month(as.POSIXlt(hrdata$Date_of_Hire, format="%d/%m/%Y"))
+
+# check how Year_of_Hire's data distributed
+hist(hrdata$Year_of_Hire, breaks = 15, main = paste("Histogram of Year_of_Hire"))
+# split Year_of_Hire variable into somewhat equal-sized groups
+hrdata$Year_of_Hire_G <- as.factor(cut2(hrdata$Year_of_Hire, g=5))
+# check how each group range look like
+summary(hrdata$Year_of_Hire_G)
+# group1 = 1969:2011, group2 = 2012:2014, group3 =2015:2016, group4 = 2017:2019, group5 = 2020:2021
+# now, convert Year_of_Hire column(int) to nominal type
+hrdata$Year_of_Hire_G <- as.numeric(cut2(hrdata$Year_of_Hire, g=5))
+hrdata<- subset(hrdata, select = -c(Year_of_Hire))
+
+# check how each month contains data points
+summary(hrdata$Month_of_Hire)
+hrdata<- subset(hrdata, select = -c(Date_of_Hire))
+```
+
+
+```{r}
+# convert Mode_of_work column(cha) to binary type
+
+# convert OFFICE to 1 and WFH to 0
+hrdata$Mode_of_work <- ifelse(hrdata$Mode_of_work =="OFFICE",1,0)
+```
+
+```{r}
+# convert Work_accident column(cha) to binary type
+
+# convert Yes to 1 and No to 0
+hrdata$Work_accident <- ifelse(hrdata$Work_accident =="Yes",1,0)
+```
+
+
+
+# correlation analysis
+```{r}
+hr_cor <- cor(hrdata[ ,colnames(hrdata) != "Attrition"], hrdata$Attrition)
+hr_cor
+```
+
+```{r}
+hist(hrdata$OverTime, breaks=2)
+summary(as.factor(hrdata$OverTime))
+```
+
+```{r}
+# Correlation scatterplot between Attrition and Monthly Income Group variables 
+summary(as.factor(hrdata$MonthlyIncomeG))
+scatterplot(Attrition~MonthlyIncomeG, smooth=TRUE, data=hrdata)
+```
+
+```{r}
+# Correlation scatterplot between Attrition and Year of Hire Group variables
+scatterplot(Attrition~Year_of_Hire_G, smooth=TRUE, data=hrdata)
+```
+```{r}
+# Correlation scatterplot between Attrition and Total working years group variables
+scatterplot(Attrition~TotalWorkingYearsG, smooth=TRUE, data=hrdata)
+```
+
+```{r}
+# Correlation scatterplot between Attrition and Job level variables
+scatterplot(Attrition~JobLevel, smooth=TRUE, data=hrdata)
+```
+
+```{r}
+# Correlation scatterplot between Attrition and YearsAtCompanyG variables
+scatterplot(Attrition~YearsAtCompanyG, smooth=TRUE, data=hrdata)
+```
+
+```{r}
+# Correlation scatterplot between Attrition and MaritalStatus variables
+scatterplot(Attrition~MaritalStatus, smooth=TRUE, data=hrdata)
+```
+```{r}
+# Correlation scatterplot between Attrition and YearsWithCurrManagerG variables
+scatterplot(Attrition~YearsWithCurrManagerG, smooth=TRUE, data=hrdata)
+```
+
+```{r}
+# the elbow method
+fviz_nbclust(hrdata, kmeans, method = "wss") +
+  geom_vline(xintercept = 3, linetype = 2) + # add line for better visualization
+  labs(subtitle = "Elbow method") # add subtitle
+```
+
+# The elbow method suggests 3 clusters
+
+```{r}
+# the silhouette method
+# Silhouette method
+fviz_nbclust(hrdata, kmeans, method = "silhouette") +
+  labs(subtitle = "Silhouette method")
+```
+
+# The Silhouette method suggests 2 clusters.
+
+
+
+```{r}
+# generate 2 clusters
+hrdata_km2 <- kmeans(hrdata, centers = 2, nstart =30)
+fviz_cluster(hrdata_km2, data=hrdata)
+```
+```{r}
+# generate 3 clusters
+hrdata_km3 <- kmeans(hrdata, centers = 3, nstart =30)
+fviz_cluster(hrdata_km3, data=hrdata)
+```
+
+```{r}
+# generate 5 clusters
+hrdata_km5 <- kmeans(hrdata, centers = 5, nstart =30)
+fviz_cluster(hrdata_km5, data=hrdata)
+```
+
+
+```{r}
+# create data frame including the 2 clusters results
+hrdata_km2df <- data.frame(hrdata, hrdata_km2$cluster)
+
+# subset of hrdata_km2df where attrition is 1 or 0
+hrdata_km2at1 <- subset(hrdata_km2df, Attrition == 1)
+hrdata_km2at0 <- subset(hrdata_km2df, Attrition == 0)
+
+# randomly sampled attrition=1 or 0 data
+hrdata_km2sam1 <- hrdata_km2at1[sample(1:nrow(hrdata_km2at1), size = 50, replace=FALSE), ]
+hrdata_km2sam2 <- hrdata_km2at0[sample(1:nrow(hrdata_km2at0), size = 50, replace=FALSE), ]
+
+# adds sampled data together
+hrdata_km2sam <- rbind(hrdata_km2sam1,hrdata_km2sam2)
+
+# confusion matrix to find the connection with attrition variable
+table(hrdata_km2sam$Attrition,hrdata_km2sam$hrdata_km2.cluster)
+```
+## there is not much clear connection between attrition and cluster group
+
+```{r}
+# create data frame including the 3 clusters results
+hrdata_km3df <- data.frame(hrdata, hrdata_km3$cluster)
+
+# subset of hrdata_km3df where attrition is 1 or 0
+hrdata_km3at1 <- subset(hrdata_km3df, Attrition == 1)
+hrdata_km3at0 <- subset(hrdata_km3df, Attrition == 0)
+
+# randomly sampled attrition=1 or 0 data
+hrdata_km3sam1 <- hrdata_km3at1[sample(1:nrow(hrdata_km3at1), size = 50, replace=FALSE), ]
+hrdata_km3sam2 <- hrdata_km3at0[sample(1:nrow(hrdata_km3at0), size = 50, replace=FALSE), ]
+
+# adds sampled data together
+hrdata_km3sam <- rbind(hrdata_km3sam1,hrdata_km3sam2)
+
+# confusion matrix to find the connection with attrition variable
+table(hrdata_km3sam$Attrition,hrdata_km3sam$hrdata_km3.cluster)
+```
+
+# Classification - Decision Tree Models
+
+# Experimental Design
+```{r}
+# Now that the data is labeled, its time to design an experiment. 
+# Below we randomly select a train and test set for validation
+
+# Make Train and Test sets
+numTotalem = nrow(hrdata)
+trainRatio <- .60
+
+set.seed(11) # Set Seed so that same sample can be reproduced in future also
+sample <- sample.int(n = numTotalem, size = floor(trainRatio*numTotalem), replace = F)
+
+train <- hrdata[sample, ]
+test <- hrdata[-sample, ]
+                                       
+# train / test ratio
+length(sample)/nrow(hrdata)
+```
+
+
+```{r}
+#Train Tree Model 1
+train_tree1 <- rpart(Attrition ~ ., data = train, method="class", control=rpart.control(cp=0))
+summary(train_tree1)
+```
+
+```{r}
+#plot the decision tree
+draw.tree(train_tree1)
+```
+
+```{r}
+#plot the decision tree
+fancyRpartPlot(train_tree1)
+```
+
+```{r}
+#predict the test dataset using the model for train tree No. 1
+predicted1<- predict(train_tree1, test, type="class")
+#confusion matrix to find correct and incorrect predictions
+table(Attrition=predicted1, true=test$Attrition)
+```
+
+
+```{r}
+confusionMatrix(data = predicted1, as.factor(test$Attrition))
+```
+
+# Naive Bayes Train model
+
+```{r}
+#g generate the model
+train_naibayes <- naiveBayes(train$Attrition~., data=train, na.action = na.pass)
+summary(train_naibayes)
+```
+
+
+```{r}
+# Naive Bayes model Prediction
+nb_Pred <- predict(train_naibayes, test)
+# confusion matrix to find correct and incorrect predictions
+table(Attrition=nb_Pred, true=test$Attrition)
+```
+
+
+# Association Rule Mining 
+# data preparation
+```{r}
+hrdata2 <- read.csv("D:/Documents/school/IST707/project/HRdata.csv")
+```
+
+```{r}
+# remove unnecessary columns
+hrdata2<- subset(hrdata2, select = -c(X,Date_of_termination))
+```
+
+# convert character data type to nominal types to conduct Association Rule Mining
+
+```{r}
+# convert age column(int) to nominal type
+# split age variable into somewhat equal-sized groups
+hrdata2$ageG <- as.factor(cut2(hrdata2$Age, g=6))
+# check how each group range look like
+summary(hrdata2$ageG)
+## group1 = 18:28, group2 = 29:32, group3 = 33:36, group4 = 37:40, group5 = 41:46, group6 = 47:60
+hrdata2<- subset(hrdata2, select = -c(Age))
+```
+
+```{r}
+# columns that are character type
+chacols <- c('Attrition', 'BusinessTravel', 'Department', 'Gender', 'JobRole', 'MaritalStatus','OverTime', 'Higher_Education','Date_of_Hire', 'Status_of_leaving','Mode_of_work','Work_accident', 'Source_of_Hire', 'Job_mode')
+# convert character type columns to nominal type
+hrdata2[chacols] <- lapply(hrdata2[chacols], factor)
+```
+
+
+```{r}
+# convert DistanceFromHome column(int) to nominal type
+# split DistanceFromHome variable into somewhat equal-sized groups
+hrdata2$DistanceFromHomeG <- as.factor(cut2(hrdata2$DistanceFromHome, g=8))
+# check how each group range look like
+summary(hrdata2$DistanceFromHomeG)
+# group1 = 1, group2 = 2, group3 =3:4, group4 = 5:7, group5 = 8:9, group6 = 10:14, group7 = 15:22, group8=23:29
+hrdata2 <- subset(hrdata2, select = -c(DistanceFromHome))
+```
+
+```{r}
+# check how JobInvolvement's data distributed
+hist(hrdata2$JobInvolvement, breaks = 15, main = paste("Histogram of JobInvolvement"))
+# convert JobInvolvement column(int) to nominal type
+# split JobInvolvement variable into somewhat equal-sized groups
+hrdata2$JobInvolvement <- as.factor(cut2(hrdata2$JobInvolvement, g=4))
+# check how each group range look like
+summary(hrdata2$JobInvolvement)
+```
+```{r}
+# check how JobLevel's data distributed
+hist(hrdata2$JobLevel, breaks = 15, main = paste("Histogram of JobLevel"))
+# convert JobLevel column(int) to nominal type
+# split JobLevel variable into somewhat equal-sized groups
+hrdata2$JobLevel <- as.factor(cut2(hrdata2$JobLevel, g=3))
+# check how each group range look like
+summary(hrdata2$JobLevel)
+```
+```{r}
+# check how JobSatisfaction's data distributed
+hist(hrdata2$JobSatisfaction, breaks = 15, main = paste("Histogram of JobSatisfaction"))
+# convert JobSatisfaction column(int) to nominal type
+# split JobSatisfaction variable into somewhat equal-sized groups
+hrdata2$JobSatisfaction <- as.factor(cut2(hrdata2$JobSatisfaction, g=3))
+# check how each group range look like
+summary(hrdata2$JobSatisfaction)
+```
+
+```{r}
+# convert MonthlyIncome column(int) to nominal type
+
+# split MonthlyIncome variable into somewhat equal-sized groups
+hrdata2$MonthlyIncomeG <- as.factor(cut2(hrdata2$MonthlyIncome, g=6))
+# check how each group range look like
+summary(hrdata2$MonthlyIncomeG)
+# group1 = 1009:2560, group2 = 2561:3632, group3 =3633:4929, group4 = 4930:6537, group5 = 6538:10551, group6 = 10552:19999
+hrdata2<- subset(hrdata2, select = -c(MonthlyIncome))
+```
+
+```{r}
+# check how NumCompaniesWorked's data distributed
+hist(hrdata2$NumCompaniesWorked, breaks = 15, main = paste("Histogram of NumCompaniesWorked"))
+# split MonthlyIncome variable into somewhat equal-sized groups
+hrdata2$NumCompaniesWorked <- as.factor(cut2(hrdata2$NumCompaniesWorked, g=8))
+# check how each group range look like
+summary(hrdata2$NumCompaniesWorked)
+```
+```{r}
+# check the OverTime variable value
+summary(hrdata2$OverTime)
+```
+
+```{r}
+# convert PercentSalaryHike column(int) to nominal type
+
+# check how PercentSalaryHike's data distributed
+hist(hrdata2$PercentSalaryHike, breaks = 15, main = paste("Histogram of PercentSalaryHike"))
+# split PercentSalaryHike variable into somewhat equal-sized groups
+hrdata2$PercentSalaryHike <- as.factor(cut2(hrdata2$PercentSalaryHike, g=9))
+# check how each group range look like
+summary(hrdata2$PercentSalaryHike)
+```
+```{r}
+# convert PerformanceRating column(int) to nominal type
+# split PercentSalaryHike variable into somewhat equal-sized groups
+hrdata2$PerformanceRating <- as.factor(hrdata2$PerformanceRating)
+# check the OverTime variable value
+summary(hrdata2$PerformanceRating)
+```
+```{r}
+# convert StockOptionLevel column(int) to nominal type
+# split StockOptionLevel variable into somewhat equal-sized groups
+hrdata2$StockOptionLevel <- as.factor(cut2(hrdata2$StockOptionLevel, g=3))
+# check how each group range look like
+summary(hrdata2$StockOptionLevel)
+```
+
+```{r}
+# convert TotalWorkingYears column(int) to nominal type
+
+# check how TotalWorkingYears's data distributed
+hist(hrdata2$TotalWorkingYears, breaks = 15, main = paste("Histogram of TotalWorkingYears"))
+# split TotalWorkingYears variable into somewhat equal-sized groups
+hrdata2$TotalWorkingYears <- as.factor(cut2(hrdata2$TotalWorkingYears, g=5))
+# check how each group range look like
+summary(hrdata2$TotalWorkingYears)
+```
+
+
+```{r}
+# check how TrainingTimesLastYear's data distributed
+# check how TrainingTimesLastYear's data distributed
+hist(hrdata2$TrainingTimesLastYear, breaks = 15, main = paste("Histogram of TrainingTimesLastYear"))
+# split TrainingTimesLastYear variable into somewhat equal-sized groups
+hrdata2$TrainingTimesLastYear <- as.factor(cut2(hrdata2$TrainingTimesLastYear, g=4))
+# check how each group range look like
+summary(hrdata2$TrainingTimesLastYear)
+
+```
+
+```{r}
+# convert YearsAtCompany column(int) to nominal type
+
+# check how YearsAtCompany's data distributed
+hist(hrdata2$YearsAtCompany, breaks = 15, main = paste("Histogram of YearsAtCompany"))
+# split YearsAtCompany variable into somewhat equal-sized groups
+hrdata2$YearsAtCompany <- as.factor(cut2(hrdata2$YearsAtCompany, g=4))
+# check how each group range look like
+summary(hrdata2$YearsAtCompany)
+```
+
+```{r}
+# convert YearsSinceLastPromotion column(int) to nominal type
+
+# check how YearsSinceLastPromotion's data distributed
+hist(hrdata2$YearsSinceLastPromotion, breaks = 15, main = paste("Histogram of YearsSinceLastPromotion"))
+# split YearsSinceLastPromotion variable into somewhat equal-sized groups
+hrdata2$YearsSinceLastPromotion <- as.factor(cut2(hrdata2$YearsSinceLastPromotion, g=4))
+# check how each group range look like
+summary(hrdata2$YearsSinceLastPromotion)
+```
+
+
+```{r}
+# convert YearsWithCurrManager column(int) to nominal type
+
+# check how YearsWithCurrManager's data distributed
+hist(hrdata2$YearsWithCurrManager, breaks = 15, main = paste("Histogram of YearsWithCurrManager"))
+# split YearsWithCurrManager variable into somewhat equal-sized groups
+hrdata2$YearsWithCurrManager <- as.factor(cut2(hrdata2$YearsWithCurrManager, g=5))
+# check how each group range look like
+summary(hrdata2$YearsWithCurrManager)
+```
+
+
+```{r}
+# convert Date_of_Hire column(int) to nominal type
+
+# extract year and month from Date_of_Hire data
+hrdata2$Date_of_Hire <- strptime(hrdata2$Date_of_Hire, "%d-%m-%Y")
+hrdata2$Year_of_Hire <- year(as.POSIXlt(hrdata2$Date_of_Hire, format="%d/%m/%Y"))
+hrdata2$Month_of_Hire <- month(as.POSIXlt(hrdata2$Date_of_Hire, format="%d/%m/%Y"))
+
+# check how Year_of_Hire's data distributed
+hist(hrdata2$Year_of_Hire, breaks = 15, main = paste("Histogram of Year_of_Hire"))
+# split Year_of_Hire variable into somewhat equal-sized groups
+hrdata2$Year_of_Hire_G <- as.factor(cut2(hrdata2$Year_of_Hire, g=5))
+# check how each group range look like
+summary(hrdata2$Year_of_Hire_G)
+
+hrdata2<- subset(hrdata2, select = -c(Year_of_Hire))
+
+# check how each month contains data points
+hrdata2$Month_of_Hire <- as.factor(hrdata2$Month_of_Hire)
+summary(hrdata2$Month_of_Hire)
+hrdata2<- subset(hrdata2, select = -c(Date_of_Hire))
+```
+
+
+```{r}
+# convert Leaves column(int) to nominal type
+
+# check how Leaves's data distributed
+hist(hrdata2$Leaves, breaks = 15, main = paste("Histogram of Leaves"))
+# evenly distributed, thus dose need not be split
+hrdata2$Leaves <- as.factor(hrdata2$Leaves)
+```
+```{r}
+# convert Absenteeism column(int) to nominal type
+
+# check how Absenteeism's data distributed
+hist(hrdata2$Absenteeism, breaks = 15, main = paste("Histogram of Absenteeism"))
+# evenly distributed, thus dose need not be split
+hrdata2$Absenteeism <- as.factor(hrdata2$Absenteeism)
+```
+
+```{r}
+# the most unevenly distributed variables
+# OverTime and PerformanceRating
+summary(hrdata2$OverTime)
+summary(hrdata2$PerformanceRating)
+```
+
+```{r}
+# subset the data frame
+# majority(OverTime=No and PerformanceRating=3) group
+hrdatat2ot0pf3 <- hrdata2[(hrdata2$OverTime == "No") & (hrdata2$PerformanceRating == 3),]
+# minority(OverTime=Yes and PerformanceRating=4) group
+hrdatat2ot1pf4 <- hrdata2[(hrdata2$OverTime == "Yes") & (hrdata2$PerformanceRating == 4),]
+
+set.seed(1234)
+# randomly sampled majority and minority group dataset
+hrdata_maj <- hrdatat2ot0pf3[sample(1:nrow(hrdatat2ot0pf3), size = 50, replace=FALSE), ]
+hrdata_min <- hrdatat2ot1pf4[sample(1:nrow(hrdatat2ot1pf4), size = 50, replace=FALSE), ]
+
+# combined sampled data together
+hrdata_com <- rbind(hrdata_maj,hrdata_min)
+
+# OverTime and PerformanceRating
+summary(hrdata_com$OverTime)
+summary(hrdata_com$PerformanceRating)
+```
+
+# conducted Association Rule Mining
+
+```{r}
+# test rules: targeting employees who stayed
+hr_rules1<- apriori(hrdata_com, parameter = list(support = 0.07, confidence = 1), appearance = list(default="lhs", rhs="Attrition=No"), control=list(verbose=F))
+summary(hr_rules1)
+```
+
+```{r}
+# sort the same set of rules to view based on support
+hr_rulessupport<- sort(hr_rules1, by="support", decreasing=TRUE)
+inspect(hr_rulessupport[1:20])
+```
+
+```{r}
+#plot the rules
+hr_rulessupport <- hr_rulessupport[1:10]
+plot(hr_rulessupport, method="graph")
+```
+
+```{r}
+# sort the same set of rules to view based on lift
+hr_ruleslift<- sort(hr_rules1, by="lift", decreasing=TRUE)
+inspect(hr_ruleslift[1:20])
+```
+
+
+```{r}
+summary(hr_ruleslift)
+#plot the rules
+hr_rulesliftbest <- hr_ruleslift[1:10]
+plot(hr_rulesliftbest, method="graph")
+```
+
+
+
+
